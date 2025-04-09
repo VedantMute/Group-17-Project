@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Doppio+One&family=Doto:wght@100..900&family=Lemon&family=Parkinsans:wght@300..800&family=Quicksand:wght@300..700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>Health Data Dashboard</title>
+    <style>
+        body {
+            font-family: "Doto", sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #121212;
+            color: #e0e0e0;
+        }
+        h1 {
+            color: #ffffff;
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 30px;
+        }
+        .dashboard-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background-color: #303030;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        .card-title {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            color: #ffffff;
+            font-weight: 600;
+        }
+        .chart-container {
+            position: relative;
+            height: 250px;
+            width: 100%;
+            margin-top: 10px;
+        }
+        .small-chart-container {
+            position: relative;
+            height: 200px;
+            width: 100%;
+        }
+        .loading {
+            text-align: center;
+            margin: 20px 0;
+            font-style: italic;
+            color: #bbbbbb;
+        }
+        footer {
+            text-align: center;
+            color: #ffffff;
+            margin-top: 20px;
+        }
+        a {
+            color: #ffffff;
+            text-decoration: none;
+        }
+        .value-display {
+            font-size: 2rem;
+            font-weight: bold;
+            text-align: center;
+            margin: 10px 0;
+        }
+        .parameter-a {
+            color: #4CAF50;
+        }
+        .parameter-c {
+            color: #2196F3;
+        }
+        #currentC, #currentA {
+            font-family: 'Quicksand', sans-serif;
+        }
+        .current-value {
+            font-size: 1.2rem;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Health Data Dashboard</h1>
+    <div id="loading" class="loading">Loading data...</div>
+    
+    <div class="dashboard-container">
+        <div class="card">
+            <div class="card-title">Temperature</div>
+            <div class="value-display parameter-a" id="currentA">--</div>
+            <!-- <div class="current-value">Last 10 Readings</div> -->
+            <div class="small-chart-container">
+                <canvas id="aChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-title">ECG Reading</div>
+            <div class="value-display parameter-c" id="currentC">--</div>
+            <!-- <div class="current-value">Last 10 Readings</div> -->
+            <div class="small-chart-container">
+                <canvas id="cChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="card" style="grid-column: span 2;">
+            <div class="card-title">Heart Rate (Last 10 Readings)</div>
+            <div class="chart-container">
+                <canvas id="bChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <footer>A project by group 7 BE ENTC, SCOE.</footer>
+    <footer>Made with &#9825; by <a href="vedantmute.online" style="color: white; text-decoration: none;">Vedant M</a></footer>
+
+    <!-- Load Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        // Initialize variables
+        let aChart, bChart, cChart;
+        let supabaseClient;
+        let realtimeSubscription;
+
+        // Wait for the DOM to be fully loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize Supabase client
+            const supabaseUrl = 'https://qgmyxekcoedlongowqmf.supabase.co';
+            const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnbXl4ZWtjb2VkbG9uZ293cW1mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQxMDAwOTQsImV4cCI6MjA1OTY3NjA5NH0.R4q1tFqG0ywIGsaR8gdliEsn8AKDVBftKTaFZgCt0dM';
+            supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+            
+            // Initialize all charts
+            initializeCharts();
+            
+            // Fetch initial data and set up realtime updates
+            fetchData();
+            setupRealtimeUpdates();
+        });
+
+        function initializeCharts() {
+            // Initialize Temperature (A) chart
+            const aCtx = document.getElementById('aChart').getContext('2d');
+            aChart = new Chart(aCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Temperature',
+                        data: [],
+                        backgroundColor: 'rgba(76, 175, 80, 0.7)',
+                        borderColor: 'rgba(76, 175, 80, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#e0e0e0'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                color: '#e0e0e0'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+
+            // Initialize Heart Rate (B) chart
+            const bCtx = document.getElementById('bChart').getContext('2d');
+            bChart = new Chart(bCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Heart Rate',
+                        data: [],
+                        borderColor: '#FF6384',
+                        backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#e0e0e0'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#e0e0e0'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#e0e0e0'
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Initialize ECG (C) chart
+            const cCtx = document.getElementById('cChart').getContext('2d');
+            cChart = new Chart(cCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'ECG Reading',
+                        data: [],
+                        backgroundColor: 'rgba(33, 150, 243, 0.7)',
+                        borderColor: 'rgba(33, 150, 243, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#e0e0e0'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                color: '#e0e0e0'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        async function fetchData() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('health_data')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(10);
+
+                if (error) throw error;
+
+                if (data.length > 0) {
+                    updateDashboard(data);
+                }
+
+                document.getElementById('loading').style.display = 'none';
+            } catch (error) {
+                console.error('Error fetching data:', error);
+                document.getElementById('loading').textContent = 'Error loading data. Please check console.';
+            }
+        }
+
+        function setupRealtimeUpdates() {
+            realtimeSubscription = supabaseClient
+                .channel('health_data_changes')
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'INSERT',
+                        schema: 'public',
+                        table: 'health_data'
+                    },
+                    payload => {
+                        // When new data comes in, fetch the last 10 records again
+                        fetchData();
+                    }
+                )
+                .subscribe();
+        }
+
+        function updateDashboard(data) {
+            const reversedData = [...data].reverse();
+            const timestamps = reversedData.map(item => 
+                new Date(item.created_at).toLocaleTimeString()
+            );
+
+            // Update Temperature (A)
+            const latestA = data[0].a;
+            document.getElementById('currentA').textContent = latestA;
+            
+            // Update Temperature chart
+            const aValues = reversedData.map(item => item.a);
+            aChart.data.labels = timestamps;
+            aChart.data.datasets[0].data = aValues;
+            aChart.update();
+
+            // Update ECG Reading (C)
+            const latestC = data[0].c;
+            document.getElementById('currentC').textContent = latestC;
+            
+            // Update ECG chart
+            const cValues = reversedData.map(item => item.c);
+            cChart.data.labels = timestamps;
+            cChart.data.datasets[0].data = cValues;
+            cChart.update();
+
+            // Update Heart Rate (B) chart
+            const bValues = reversedData.map(item => item.b);
+            bChart.data.labels = timestamps;
+            bChart.data.datasets[0].data = bValues;
+            bChart.update();
+        }
+
+        // Clean up subscription when page unloads
+        window.addEventListener('beforeunload', () => {
+            if (realtimeSubscription) {
+                supabaseClient.removeChannel(realtimeSubscription);
+            }
+        });
+    </script>
+</body>
+</html>
